@@ -30,21 +30,17 @@ library(ggplot2)
 All files are loaded in their original state, exactly as provided on Canvas.
 
 ```{r}
-# gene expression: rows are probe ids, columns are sample ids (gsm...)
+# read file
 expr <- read.csv(file = 'data/GSE85307_geneExpression.csv', row.names = 1)
-
-# covariate data: one row per sample
 covar <- read.csv(file = 'data/GSE85307_covar.csv')
-
-# linker file between probe ids and gene names
 geneNames <- read.csv(file = 'data/GSE85307_geneNames.csv')
 
-# check the dimensions of each file
+# check the dimention
 dim(expr)
 dim(covar)
 dim(geneNames)
 
-# take a peek at the top entries of each file
+# check the data
 expr[1:3, 1:3]
 head(covar)
 head(geneNames)
