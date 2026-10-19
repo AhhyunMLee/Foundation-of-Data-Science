@@ -1,0 +1,12 @@
+# data files are kept locally and not uploaded to github
+data/
+
+# files made automatically by rstudio and mac
+.Rhistory
+.RData
+.Rproj.user/
+.DS_Store
+
+# files made while knitting
+*.log
+*.tex

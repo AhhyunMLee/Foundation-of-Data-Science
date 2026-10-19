@@ -28,15 +28,20 @@ and gestational age, using data from GEO accession
 |---|---|
 | `Submission1.Rmd` | Data wrangling and plots for Submission 1 (histogram, scatterplot, boxplot) |
 | `Submission1.pdf` | Knitted output of `Submission1.Rmd` |
-| `data/GSE85307_geneExpression.csv` | Gene expression data (rows = probe IDs, columns = samples) |
-| `data/GSE85307_covar.csv` | Covariate data for each sample |
-| `data/GSE85307_geneNames.csv` | Linker file between probe IDs and gene names |
+
+## Data Files (Not Included)
+
+The data files are not included in this repository. To run the code, download them from
+Canvas and put them in a folder called `data/` inside the repository folder:
+
+- `data/GSE85307_geneExpression.csv`: gene expression data (rows = probe IDs, columns = samples)
+- `data/GSE85307_covar.csv`: covariate data for each sample
+- `data/GSE85307_geneNames.csv`: linker file between probe IDs and gene names
 
 ## How to Run
 
 1. Clone this repository (or download it as a ZIP file).
-2. Open `Submission1.Rmd` in RStudio from the repository folder.
-3. Click **Knit**. The data files are read from the `data/` folder, so keep the folder
-   structure as is.
+2. Add the data files to the `data/` folder as described above.
+3. Open `Submission1.Rmd` in RStudio from the repository folder and click **Knit**.
 
 Required R package: `ggplot2` (plus `rmarkdown` and a LaTeX installation to knit to PDF).

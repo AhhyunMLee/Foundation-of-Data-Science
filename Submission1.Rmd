@@ -9,7 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
-### Variables of Interest
+### Variables that I choose
 
 * **Gene:** CXCR2
 * **Continuous covariate:** maternal vitamin D at baseline (`mat_vitD`, ng/mL)
