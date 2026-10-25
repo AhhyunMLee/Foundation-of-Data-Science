@@ -148,6 +148,9 @@ dim(dat)
 
 All `r nrow(dat)` samples were matched, so no samples were removed.
 
+### Summary Table
+
+```{r}
 # continuous variables: mean and standard deviation
 mean(dat$CXCR2)
 sd(dat$CXCR2)
@@ -163,6 +166,7 @@ round(prop.table(table(dat$collect_trimester)) * 100, 1)
 
 # number of samples in each boxplot group
 table(dat$collect_trimester, dat$preg_preeclampsia)
+```
 
 ### Plots
 
