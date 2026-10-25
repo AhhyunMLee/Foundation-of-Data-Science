@@ -6,7 +6,7 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = TRUE)
 ```
 
 ### Variables that I choose
@@ -81,6 +81,12 @@ covar$collect_trimester <- factor(ifelse(covar$sampleCollection_gestAge_wks < 14
                                          '1st trimester (<14 wks)',
                                          '2nd trimester (>=14 wks)'))
 
+# count missing values in the variables I use
+sum(is.na(covar$mat_vitD))
+sum(is.na(covar$preg_preeclampsia))
+sum(is.na(covar$sampleCollection_gestAge_wks))
+sum(is.na(covar$collect_trimester))
+
 # check that the conversion worked (no missing values, sensible ranges)
 summary(covar)
 table(covar$collect_trimester)
@@ -141,6 +147,22 @@ dim(dat)
 ```
 
 All `r nrow(dat)` samples were matched, so no samples were removed.
+
+# continuous variables: mean and standard deviation
+mean(dat$CXCR2)
+sd(dat$CXCR2)
+mean(dat$mat_vitD)
+sd(dat$mat_vitD)
+
+# categorical variables: counts and percentages
+table(dat$preg_preeclampsia)
+round(prop.table(table(dat$preg_preeclampsia)) * 100, 1)
+
+table(dat$collect_trimester)
+round(prop.table(table(dat$collect_trimester)) * 100, 1)
+
+# number of samples in each boxplot group
+table(dat$collect_trimester, dat$preg_preeclampsia)
 
 ### Plots
 
