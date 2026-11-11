@@ -1,0 +1,443 @@
+---
+title: 'QBS 103 Final Project - Submission 3'
+author: 'Ahhyun Lee'
+date: 'November 11, 2026'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# show code in the pdf, hide package messages
+# fig.path = 'figures/' makes knitr save every plot as a pdf in the figures folder (used by main.tex)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.path = 'figures/')
+```
+
+## Submission Notes
+
+Collaborators: NA
+
+Every plot in this file is saved automatically by knitr into a folder called `figures` (created when you knit); `main.tex` uses those files.
+
+## Feedback From Previous Submissions
+
+**Feedback on Submission 1** (quoted exactly as I received it):
+
+> Great job! Your data cleaning is very thorough and you did a great job checking that you weren't introducing errors along the way. For your next submission, add something to your boxplot that helps indicate sample size difference across groups (ex. jitter).
+
+*How I addressed it:* every boxplot (all 3 genes) has jittered points for each sample, and the x-axis labels show the n of each group (for example, "Normal n = 58 | Preeclampsia n = 29"). I kept the data-cleaning checks (matching probe IDs and sample IDs and verifying a value in the combined data) in this file.
+
+**Feedback on Submission 2** (quoted exactly as I received it):
+
+> Great job! For your final submission please ensure that your gene names are italicized as this is customary for gene expression data.
+
+*How I addressed it:* gene names are italic in all plot titles and axis labels (using `TeX()` with `\textit{}`), in the heatmap row labels, and on the y-axis of the additional plot. In the LaTeX report, every gene name is typeset in italics.
+
+## Variables Used
+
+* Genes: *CXCR2*, *LYN*, *RUNDC3A*
+* Continuous covariate for the plots: maternal vitamin D at baseline (`mat_vitD`, ng/mL)
+* Categorical covariate 1: pregnancy outcome (`preg_preeclampsia`: Normal vs Preeclampsia)
+* Categorical covariate 2: trimester of blood draw (`collect_trimester`), derived from `sampleCollection_gestAge_wks` (1st trimester = before 14 weeks, 2nd trimester = 14 weeks or later)
+* Two additional continuous covariates (summary table only): maternal age (`mat_age_yrs`) and maternal BMI (`mat_BMI`)
+
+## Load Packages
+
+```{r}
+library(ggplot2)    # all plots
+library(ggpubr)     # stat_cor() for the correlation label (used in class)
+library(latex2exp)  # tex() for italic gene names in labels (used in class)
+library(pheatmap)   # heatmap with clustering and tracking bars
+library(knitr)      # kable()
+library(kableExtra) # table formatting
+```
+
+## Load the Data
+
+All files are loaded in their original state, exactly as provided on Canvas.
+
+```{r}
+# read the three files
+# row.names = 1 uses the first column (probe ids) as the row names of the expression data
+expr <- read.csv(file = 'data/GSE85307_geneExpression.csv', row.names = 1)
+covar <- read.csv(file = 'data/GSE85307_covar.csv')
+geneNames <- read.csv(file = 'data/GSE85307_geneNames.csv')
+
+# check the dimensions (rows, columns) of each file
+dim(expr)
+dim(covar)
+dim(geneNames)
+
+# (checks used while working, commented out to keep the pdf short)
+# expr[1:3, 1:3]
+# head(covar)
+# head(genenames)
+```
+
+## Clean the Covariate Data
+
+The first column name has a hidden character at the start of the file, and every covariate value starts with a label (e.g. "age_years: 31.07"), so both need to be fixed.
+
+```{r}
+# rename the first column (the hidden character at the start of the file changes its name)
+colnames(covar)[1] <- 'subjectID'
+
+# remove the label before ": " in every covariate column (columns 3 to 10)
+# '.*: ' means "any characters followed by a colon and a space"
+for (i in 3:ncol(covar)) {
+  covar[, i] <- gsub(pattern = '.*: ', replacement = '', x = covar[, i])
+}
+
+# convert the continuous variables from character to numeric
+# (they were stored as text because of the labels removed above)
+covar$mat_age_yrs <- as.numeric(covar$mat_age_yrs)
+covar$delivery_gestAge_wks <- as.numeric(covar$delivery_gestAge_wks)
+covar$sampleCollection_gestAge_wks <- as.numeric(covar$sampleCollection_gestAge_wks)
+covar$mat_BMI <- as.numeric(covar$mat_BMI)
+covar$mat_vitD <- as.numeric(covar$mat_vitD)
+
+# convert the categorical variables to factors with readable labels
+# the levels argument sets the order (normal is listed first, so it is the reference group)
+covar$preg_preeclampsia <- factor(covar$preg_preeclampsia,
+                                  levels = c('Normal', 'Preeclampsia'))
+covar$mat_asthma <- factor(ifelse(covar$mat_asthma == 1, 'Asthma', 'Healthy'),
+                           levels = c('Healthy', 'Asthma'))
+covar$batch_Microarray <- factor(covar$batch_Microarray)
+
+# derive a categorical variable from the continuous gestational age at blood draw
+# the first trimester ends at 13 6/7 weeks, so < 14 weeks = 1st trimester
+covar$collect_trimester <- factor(ifelse(covar$sampleCollection_gestAge_wks < 14,
+                                         '1st trimester (<14 wks)',
+                                         '2nd trimester (>=14 wks)'))
+
+# count missing values in the variables i use (all should be 0)
+sum(is.na(covar$mat_vitD))
+sum(is.na(covar$preg_preeclampsia))
+sum(is.na(covar$sampleCollection_gestAge_wks))
+sum(is.na(covar$collect_trimester))
+
+# (full summary used while working, commented out to keep the pdf short)
+# summary(covar)
+```
+
+## Match Probe IDs to Gene Names
+
+```{r}
+# check that every probe in the expression data is in the linker file (should all be true)
+table(rownames(expr) %in% geneNames$PROBEID)
+
+# keep only the probes that are in the expression data
+geneNames <- geneNames[geneNames$PROBEID %in% rownames(expr), ]
+
+# put both in the same order by probe id so that row i matches row i
+expr <- expr[order(as.numeric(rownames(expr))), ]
+geneNames <- geneNames[order(geneNames$PROBEID), ]
+
+# check that the probe ids are now in the same order (should all be true)
+table(rownames(expr) == geneNames$PROBEID)
+
+# replace the probe ids with gene names
+rownames(expr) <- geneNames$GENE
+```
+
+## Match Gene Expression to Covariates
+
+The columns of the expression file are not in the same order as the rows of the covariate file, so the samples need to be put in the same order before combining.
+
+```{r}
+# check that the same samples are in both files (should all be true in both directions)
+table(colnames(expr) %in% covar$geoID)
+table(covar$geoID %in% colnames(expr))
+
+# flip the expression data so that rows are samples and columns are genes
+exprT <- as.data.frame(t(expr))
+
+# put both data frames in the same order by sample id
+exprT <- exprT[order(rownames(exprT)), ]
+covar <- covar[order(covar$geoID), ]
+
+# check that the sample ids are now in the same order (should all be true)
+table(rownames(exprT) == covar$geoID)
+
+# combine the covariates and gene expression into one data frame
+dat <- data.frame(covar, exprT)
+
+# double check one sample: the value in the combined data should match the original file
+dat$CXCR2[dat$geoID == 'GSM2264363'] == expr['CXCR2', 'GSM2264363']
+
+# final sample size (rows = samples, columns = covariates + genes)
+dim(dat)
+```
+
+All 157 samples were matched, so no samples were removed.
+
+```{r}
+# number of samples in each boxplot group (rows = trimester, columns = pregnancy outcome)
+table(dat$collect_trimester, dat$preg_preeclampsia)
+```
+
+
+## Choose the Genes
+
+```{r}
+# the three genes used for the per-gene plots
+genes <- c('CXCR2', 'LYN', 'RUNDC3A')
+
+# check that all three genes are columns in the combined data (should all be true)
+table(genes %in% colnames(dat))
+```
+
+## The Plotting Function
+
+The function takes a data frame and a vector of gene names. For every gene it makes
+a histogram, a scatterplot against maternal vitamin D, and a boxplot by trimester and pregnancy outcome.
+Changes based on feedback:
+
+* gene names are italic in titles and axis labels (`TeX()` with `\textit{}`)
+* the boxplot shows jittered points and the n of each group (Submission 1 feedback)
+* Spearman correlation is shown (as in class)
+
+```{r}
+# function to make the three plots for each gene
+# data  = data frame with the covariates and one column of expression per gene
+# genes = character vector with one or more gene names (column names of data)
+plotGeneExpression <- function(data, genes) {
+
+  # loop through every gene
+  for (gene in genes) {
+
+    # make a small data frame for this gene
+    # data[, gene] picks the column whose name is stored in the variable gene
+    plotData <- data.frame(expression = data[, gene],
+                           mat_vitD = data$mat_vitD,
+                           collect_trimester = data$collect_trimester,
+                           preg_preeclampsia = data$preg_preeclampsia)
+
+    # label with the gene name in italics
+    geneLabel <- TeX(paste0('\\textit{', gene, '} Expression (log2)'))
+
+    # histogram of gene expression
+    histPlot <- ggplot(plotData, aes(x = expression)) +
+      geom_histogram(bins = 25, fill = 'steelblue', color = 'white') +
+      labs(title = TeX(paste0('Distribution of \\textit{', gene, '} Expression')),
+           x = geneLabel,
+           y = 'Number of Samples') +
+      theme_classic() +
+      theme(plot.title = element_text(face = 'bold'),
+            axis.title = element_text(face = 'bold'))
+
+    # scatterplot of maternal vitamin d vs gene expression with a linear trend line
+    # stat_cor adds the spearman correlation (r) and p-value to the plot
+    scatterPlot <- ggplot(plotData, aes(x = mat_vitD, y = expression)) +
+      geom_point(color = 'steelblue', alpha = 0.7) +
+      geom_smooth(method = 'lm', formula = y ~ x, color = 'black') +
+      ggpubr::stat_cor(method = 'spearman', r.accuracy = 0.01, p.accuracy = 0.001) +
+      labs(title = TeX(paste0('Maternal Vitamin D vs \\textit{', gene, '} Expression')),
+           x = 'Maternal Vitamin D at Baseline (ng/mL)',
+           y = geneLabel) +
+      theme_classic() +
+      theme(plot.title = element_text(face = 'bold'),
+            axis.title = element_text(face = 'bold'))
+
+    # boxplot by trimester of blood draw and pregnancy outcome
+    # count the samples in each group and add them to the x-axis labels
+    counts <- table(plotData$collect_trimester, plotData$preg_preeclampsia)
+    trimesterLabels <- paste(rownames(counts),
+                             '\nNormal n =', counts[, 'Normal'],
+                             '| Preeclampsia n =', counts[, 'Preeclampsia'])
+    plotData$collect_trimester <- factor(plotData$collect_trimester,
+                                         labels = trimesterLabels)
+
+    # boxplot with jittered points so the number of points shows the sample size
+    boxPlot <- ggplot(plotData, aes(x = collect_trimester, y = expression,
+                                    fill = preg_preeclampsia)) +
+      geom_boxplot() +
+      geom_point(position = position_jitterdodge(jitter.width = 0.2), alpha = 0.5) +
+      scale_fill_manual(values = c('steelblue', 'darkorange')) +
+      labs(title = TeX(paste0('\\textit{', gene, '} Expression by Trimester and Preeclampsia')),
+           x = 'Gestational Age at Blood Draw',
+           y = geneLabel,
+           fill = 'Pregnancy Outcome') +
+      theme_classic() +
+      theme(plot.title = element_text(face = 'bold'),
+            axis.title = element_text(face = 'bold'),
+            legend.title = element_text(face = 'bold'),
+            legend.position = 'top')
+
+    # print the three plots (plots inside a loop are not shown unless printed)
+    print(histPlot)
+    print(scatterPlot)
+    print(boxPlot)
+  }
+}
+```
+
+## Plots for All Three Genes
+
+```{r gene-plots, fig.width = 7.5, fig.height = 4.5}
+# run the function on the combined data frame and the three genes
+# (knitr saves the 9 plots as gene-plots-1.pdf ... gene-plots-9.pdf, in the order they print)
+plotGeneExpression(data = dat, genes = genes)
+```
+
+## Table 1: Summary Statistics
+
+Three continuous covariates (maternal vitamin D, age, BMI) and two categorical covariates
+(pregnancy outcome, which defines the columns, and trimester of blood draw), stratified by pregnancy outcome.
+Maternal age is roughly symmetric (mean 26.4, median 26.6 in `summary(covar)`), so it is shown as mean (SD).
+Vitamin D and BMI are right skewed (mean above median), so they are shown as median [Q1, Q3].
+Categorical variables are shown as n (%).
+
+```{r}
+# function from class: summarize a continuous variable
+# normal = t gives mean (sd); normal = f gives median [q1, q3]
+contSummary <- function(x, normal = T) {
+
+  # calculate mean (sd) if normally distributed (the default)
+  if (normal == T) {
+    # calculate individual values
+    myMean <- round(mean(x), 1)
+    mySD <- round(sd(x), 1)
+    # combine values
+    paste0(myMean, ' (', mySD, ')')
+  }
+  # calculate median [q1, q3] if non-normally distributed
+  else {
+    # calculate individual values
+    myMedian <- round(median(x), 1)
+    myIQR1 <- round(quantile(x, 1/4), digits = 1)
+    myIQR2 <- round(quantile(x, 3/4), digits = 1)
+    # combine values
+    paste0(myMedian, ' [', myIQR1, ', ', myIQR2, ']')
+  }
+}
+
+# split the data by pregnancy outcome
+normalData <- dat[dat$preg_preeclampsia == 'Normal', ]
+preData <- dat[dat$preg_preeclampsia == 'Preeclampsia', ]
+
+# categorical variable (trimester): count (n) and percent for each level, using table() as in class
+trimAll <- paste0(c(table(dat$collect_trimester)), ' (',
+                  c(round(table(dat$collect_trimester) / length(dat$collect_trimester) * 100, digits = 1)),
+                  ')')
+trimNormal <- paste0(c(table(normalData$collect_trimester)), ' (',
+                     c(round(table(normalData$collect_trimester) / length(normalData$collect_trimester) * 100, digits = 1)),
+                     ')')
+trimPre <- paste0(c(table(preData$collect_trimester)), ' (',
+                  c(round(table(preData$collect_trimester) / length(preData$collect_trimester) * 100, digits = 1)),
+                  ')')
+
+# build the table: vitamin d and bmi are right skewed (normal = f), age is roughly symmetric
+table1 <- data.frame(
+  'Variable' = c('Maternal vitamin D (ng/mL), median [Q1, Q3]',
+                 'Maternal age (years), mean (SD)',
+                 'Maternal BMI (kg/m2), median [Q1, Q3]',
+                 'Trimester of blood draw, n (%)',
+                 levels(dat$collect_trimester)[1], levels(dat$collect_trimester)[2]),
+  'Overall' = c(contSummary(dat$mat_vitD, normal = F),
+                contSummary(dat$mat_age_yrs, normal = T),
+                contSummary(dat$mat_BMI, normal = F),
+                '', trimAll[1], trimAll[2]),
+  'Normal' = c(contSummary(normalData$mat_vitD, normal = F),
+               contSummary(normalData$mat_age_yrs, normal = T),
+               contSummary(normalData$mat_BMI, normal = F),
+               '', trimNormal[1], trimNormal[2]),
+  'Preeclampsia' = c(contSummary(preData$mat_vitD, normal = F),
+                     contSummary(preData$mat_age_yrs, normal = T),
+                     contSummary(preData$mat_BMI, normal = F),
+                     '', trimPre[1], trimPre[2]))
+
+# print the table with kable (same functions as class)
+kable(x = table1, caption = 'Table 1',
+      col.names = c('Variable', paste0('Overall (n = ', length(dat$geoID), ')'),
+                    paste0('Normal (n = ', length(normalData$geoID), ')'),
+                    paste0('Preeclampsia (n = ', length(preData$geoID), ')')),
+      align = c('l', 'r', 'r', 'r')) %>%
+  add_indent(positions = c(5, 6)) %>%
+  kable_classic()
+```
+
+## Heatmap
+
+The 10 genes with the highest variance are shown (same approach as class: `apply()` with `var`, then `pheatmap`).
+Rows and columns are clustered with Euclidean distance, and the tracking bars show pregnancy outcome and trimester.
+
+```{r heatmap, fig.width = 7, fig.height = 5}
+# calculate variance of each gene and keep the 10 with the highest variance
+geneVar <- apply(expr, MARGIN = 1, FUN = var)
+top10 <- expr[order(geneVar, decreasing = T)[1:10], ]
+
+# define the tracking bars (row names = sample ids, as in class)
+annotationData <- data.frame(row.names = dat$geoID,
+                             'Outcome' = dat$preg_preeclampsia,
+                             'Trimester' = dat$collect_trimester)
+# put the samples in the same order as the heatmap columns
+annotationData <- annotationData[colnames(top10), ]
+
+trimColors <- c('grey80', 'grey30')
+names(trimColors) <- levels(dat$collect_trimester)
+annotationColors <- list('Outcome' = c('Normal' = 'steelblue',
+                                         'Preeclampsia' = 'darkorange'),
+                         'Trimester' = trimColors)
+
+# italic gene names for the row labels
+rowLabels <- c()
+for (g in rownames(top10)) {
+  rowLabels <- c(rowLabels, TeX(paste0('\\textit{', g, '}')))
+}
+
+# heatmap with clustering and tracking bars (same function as class)
+pheatmap(top10,
+         clustering_distance_cols = 'euclidean',
+         clustering_distance_rows = 'euclidean',
+         annotation_col = annotationData,
+         annotation_colors = annotationColors,
+         show_colnames = F,
+         labels_row = rowLabels)
+```
+
+## Additional Plot: Median and IQR Dot Plot
+
+The assignment asks for a plot type not covered in class. This plot compares the three genes and the two
+pregnancy outcomes in one panel. Each gene is converted to a z-score first (mean 0, SD 1) because the genes
+sit at very different expression levels (about 9 vs 12 log2 units). The dot is the median and the line is the
+interquartile range for each outcome. It uses `ggplot2` only (`geom_pointrange`).
+
+```{r dotplot, fig.width = 6.5, fig.height = 4}
+# build a data frame with one row per gene and outcome
+geneVec <- c()
+outcomeVec <- c()
+medVec <- c()
+q1Vec <- c()
+q3Vec <- c()
+for (g in genes) {
+  # z-score of this gene
+  z <- (dat[[g]] - mean(dat[[g]])) / sd(dat[[g]])
+  for (o in c('Normal', 'Preeclampsia')) {
+    zGroup <- z[dat$preg_preeclampsia == o]
+    geneVec <- c(geneVec, g)
+    outcomeVec <- c(outcomeVec, o)
+    medVec <- c(medVec, median(zGroup))
+    q1Vec <- c(q1Vec, as.numeric(quantile(zGroup, 1/4)))
+    q3Vec <- c(q3Vec, as.numeric(quantile(zGroup, 3/4)))
+  }
+}
+dotData <- data.frame(gene = factor(geneVec, levels = c(genes[3], genes[2], genes[1])),
+                      outcome = factor(outcomeVec, levels = c('Normal', 'Preeclampsia')),
+                      med = medVec, q1 = q1Vec, q3 = q3Vec)
+
+# the y-axis only has gene names, so the whole axis text can be italic
+dotPlot <- ggplot(dotData, aes(x = med, xmin = q1, xmax = q3, y = gene, color = outcome)) +
+  geom_pointrange(position = position_dodge(width = 0.5)) +
+  scale_color_manual(values = c('steelblue', 'darkorange')) +
+  labs(title = 'Median Standardized Expression by Pregnancy Outcome',
+       x = 'Expression (z-score within gene): median and IQR',
+       y = NULL,
+       color = 'Pregnancy Outcome') +
+  theme_classic() +
+  theme(plot.title = element_text(face = 'bold'),
+        axis.title = element_text(face = 'bold'),
+        legend.title = element_text(face = 'bold'),
+        axis.text.y = element_text(face = 'italic', size = 11, color = 'black'),
+        legend.position = 'top')
+
+dotPlot
+```
